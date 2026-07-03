@@ -1,0 +1,126 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        x:Class="BR_QImport.MainWindow"
+        Title="BOXROOM Quick Import"
+        Width="800"
+        Height="650"
+        MinWidth="700"
+        MinHeight="550">
+
+    <Grid Margin="15"
+          RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0"
+                   Text="BOXROOM Steam Quick Import"
+                   FontSize="22"
+                   FontWeight="Bold"
+                   Margin="0,0,0,15"/>
+
+        <!-- JSON -->
+        <GroupBox Grid.Row="1"
+                  Header="Steam UserData JSON">
+            <Grid Margin="10"
+                  RowDefinitions="*,Auto">
+
+                <TextBox Name="JsonTextBox"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         Height="220"
+                         PlaceholderText="Paste the JSON from https://store.steampowered.com/dynamicstore/userdata/ here..." />
+
+                <StackPanel Grid.Row="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="0,10,0,0"
+                            Spacing="8">
+
+                    <Button Name="BrowseJsonButton"
+                            Content="Browse JSON..."
+                            Click="BrowseJsonButton_Click" />
+
+                    <Button Name="OpenSteamButton"
+                            Content="Open Steam UserData Page"
+                            Click="OpenSteamButton_Click" />
+
+                </StackPanel>
+
+            </Grid>
+        </GroupBox>
+
+        <!-- Cache Directory -->
+        <GroupBox Grid.Row="2"
+                  Header="BOXROOM Cache Directory"
+                  Margin="0,15,0,0">
+
+            <Grid Margin="10"
+                  ColumnDefinitions="*,Auto"
+                  ColumnSpacing="10">
+
+                <TextBox Name="CacheDirectoryTextBox"
+                         PlaceholderText="Path to steam_cache_v2" />
+
+                <Button Grid.Column="1"
+                        Name="BrowseCacheButton"
+                        Content="Browse..."
+                        Click="BrowseCacheButton_Click"/>
+
+            </Grid>
+
+        </GroupBox>
+
+        <!-- Status -->
+        <GroupBox Grid.Row="3"
+                  Header="Status"
+                  Margin="0,15,0,0">
+
+            <TextBox Name="StatusTextBox"
+                     Margin="10"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Text="Ready." />
+
+        </GroupBox>
+
+<!-- Bottom Buttons -->
+<StackPanel Grid.Row="4"
+            Orientation="Horizontal"
+            HorizontalAlignment="Right"
+            Margin="0,15,0,0"
+            Spacing="10">
+
+    <CheckBox x:Name="ScrapeCheckBox"
+              Content="Download metadata"
+              IsChecked="True"
+              VerticalAlignment="Center" />
+
+    <CheckBox x:Name="CoverArtCheckBox"
+              Content="Download cover art"
+              IsChecked="True"
+              VerticalAlignment="Center" />
+
+    <CheckBox x:Name="ScreenshotCheckBox"
+              Content="Download screenshots (may take a while)"
+              IsChecked="False"
+              VerticalAlignment="Center" />
+
+    <Button Name="ImportButton"
+            Content="Import"
+            Width="120"
+            Height="35"
+            Click="ImportButton_Click"/>
+
+    <Button Name="CloseButton"
+            Content="Close"
+            Width="120"
+            Height="35"
+            Click="CloseButton_Click"/>
+
+</StackPanel>
+
+    </Grid>
+</Window>
