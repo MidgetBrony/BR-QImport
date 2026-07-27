@@ -8,7 +8,7 @@ namespace BR_QImport
         public int PlayTimeMinutes { get; set; }
         public string Name { get; set; } = "";
         public string ShortDescription { get; set; } = "";
-        public string Type { get; set; } = "";
+        public string AppType { get; set; } = "";
         public string DetailedDescription { get; set; } = "";
         public string AboutTheGame { get; set; } = "";
         public string BoxArtUrlBase { get; set; } = "";
@@ -20,10 +20,6 @@ namespace BR_QImport
         public List<string> ScreenshotUrls { get; set; } = new();
     }
 
-    public class FailureCache
-    {
-        public Dictionary<int, FailureFlags> Entries { get; set; } = new();
-    }
 
     [Flags]
     public enum FailureFlags
@@ -50,5 +46,7 @@ namespace BR_QImport
         public HashSet<int> NoCoverArt { get; set; } = new();
 
         public HashSet<int> NoScreenshots { get; set; } = new();
+
+        public HashSet<int> ServerError { get; set; } = new();
     }
 }

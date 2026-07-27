@@ -15,14 +15,27 @@ public enum SteamFetchStatus
     NoMetadata,
     NetworkError,
     InvalidResponse,
-    RateLimited
+    RateLimited,
+    ServerError
+}
+
+public class ProgressInfo
+{
+    public int Current { get; init; }
+    public int Total { get; init; }
+
+    public string Status { get; init; } = "";
+    public string? CurrentGame { get; init; }
+
+    public double Percent =>
+    Total > 0 ? (double)Current / Total * 100 : 0;
 }
 
 public class Fetcher
 {
     private readonly HttpClient _client = new();
-    public event Action<string>? StatusChanged;
-    private readonly string _failureFile = "failures.json";    
+    public event Action<ProgressInfo>? ProgressChanged;
+    private readonly string _failureFile = "failures.json";
 
     private async Task WriteMetaAsync(string folder, SteamMeta meta)
     {
@@ -43,8 +56,15 @@ public class Fetcher
         CacheFailures failures = await LoadFailuresAsync();
         bool failuresChanged = false;
 
-        foreach (string gameFolder in Directory.GetDirectories(boxRoomCachePath))
+        
+        string[] gameFolders = Directory.GetDirectories(boxRoomCachePath);
+
+        int total = gameFolders.Length;
+        int current = 0;
+
+        foreach (string gameFolder in gameFolders)
         {
+            current++;
             string metaPath = Path.Combine(gameFolder, "meta.json");
 
             if (!File.Exists(metaPath))
@@ -60,7 +80,14 @@ public class Fetcher
 
             if (failures.NoCoverArt.Contains(appId))
             {
-                StatusChanged?.Invoke($"Skipping cover art for {meta.Name} (known unavailable)");
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Status = $"Skipping cover art for {meta.Name} (known unavailable)",
+                    Current = current,
+                    Total = total,
+                    CurrentGame = meta.Name
+                });
+
                 continue;
             }
 
@@ -69,7 +96,13 @@ public class Fetcher
             if (File.Exists(output))
                 continue;
 
-            StatusChanged?.Invoke($"Downloading cover art for {meta.Name}");
+            ProgressChanged?.Invoke(new ProgressInfo
+            {
+                Current = current,
+                Total = total,
+                Status = "Downloading cover art",
+                CurrentGame = meta.Name
+            });
 
             try
             {
@@ -85,7 +118,13 @@ public class Fetcher
                 failures.NoCoverArt.Add(appId);
                 failuresChanged = true;
 
-                StatusChanged?.Invoke($"Cover art for {meta.Name} does not exist.");
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Current = current,
+                    Total = total,
+                    Status = "Cover art unavailable",
+                    CurrentGame = meta.Name
+                });
             }
 
             await Task.Delay(100);
@@ -100,9 +139,24 @@ public class Fetcher
         string steamUrl =
             $"https://store.steampowered.com/api/appdetails?appids={steamId}";
 
+        int serverRetries = 0;
+        const int MaxServerRetries = 3;
+
         while (true)
         {
-            HttpResponseMessage response = await _client.GetAsync(steamUrl);
+            HttpResponseMessage response;
+
+            try
+            {
+                response = await _client.GetAsync(steamUrl);
+            }
+            catch
+            {
+                return new SteamFetchResult
+                {
+                    Status = SteamFetchStatus.NetworkError
+                };
+            }
 
             if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
             {
@@ -110,16 +164,31 @@ public class Fetcher
                     response.Headers.RetryAfter?.Delta
                     ?? TimeSpan.FromSeconds(30);
 
-                StatusChanged?.Invoke(
-                    $"Rate limited by Steam API. Waiting {waitTime.TotalSeconds} seconds before retrying...");
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Status = $"Rate limited by Steam API. Waiting {waitTime.TotalSeconds} seconds before retrying..."
+                });
 
                 await Task.Delay(waitTime);
                 continue;
             }
+
             if ((int)response.StatusCode >= 500)
             {
-                StatusChanged?.Invoke(
-                    $"Steam server returned {(int)response.StatusCode}. Retrying in 30 seconds...");
+                serverRetries++;
+
+                if (serverRetries >= MaxServerRetries)
+                {
+                    return new SteamFetchResult
+                    {
+                        Status = SteamFetchStatus.ServerError
+                    };
+                }
+
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Status = $"Steam server returned {(int)response.StatusCode}. Retry {serverRetries}/{MaxServerRetries} in 30 seconds..."
+                });
 
                 await Task.Delay(TimeSpan.FromSeconds(30));
                 continue;
@@ -129,7 +198,19 @@ public class Fetcher
 
             string json = await response.Content.ReadAsStringAsync();
 
-            JsonNode? root = JsonNode.Parse(json);
+            JsonNode? root;
+
+            try
+            {
+                root = JsonNode.Parse(json);
+            }
+            catch
+            {
+                return new SteamFetchResult
+                {
+                    Status = SteamFetchStatus.InvalidResponse
+                };
+            }
 
             if (root?[steamId.ToString()]?["success"]?.GetValue<bool>() != true)
             {
@@ -149,7 +230,7 @@ public class Fetcher
                 {
                     PlayTimeMinutes = 0,
                     Name = gameData["name"]?.ToString() ?? "",
-                    Type = gameData["type"]?.ToString() ?? "",
+                    AppType = gameData["type"]?.ToString() ?? "",
                     ShortDescription = gameData["short_description"]?.ToString() ?? "",
                     DetailedDescription = gameData["detailed_description"]?.ToString() ?? "",
                     AboutTheGame = gameData["about_the_game"]?.ToString() ?? "",
@@ -186,8 +267,14 @@ public class Fetcher
         CacheFailures failures = await LoadFailuresAsync();
         bool failuresChanged = false;
 
-        foreach (string gameFolder in Directory.GetDirectories(boxRoomCachePath))
+        string[] gameFolders = Directory.GetDirectories(boxRoomCachePath);
+
+        int total = gameFolders.Length;
+        int current = 0;
+
+        foreach (string gameFolder in gameFolders)
         {
+            current++;
             string metaPath = Path.Combine(gameFolder, "meta.json");
 
             if (!File.Exists(metaPath))
@@ -203,7 +290,14 @@ public class Fetcher
 
             if (failures.NoScreenshots.Contains(appId))
             {
-                StatusChanged?.Invoke($"Skipping screenshots for {meta.Name} (known unavailable)");
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Current = current,
+                    Total = total,
+                    Status = "Skipping screenshots",
+                    CurrentGame = meta.Name
+                });
+
                 continue;
             }
 
@@ -212,12 +306,24 @@ public class Fetcher
                 failures.NoScreenshots.Add(appId);
                 failuresChanged = true;
 
-                StatusChanged?.Invoke($"No screenshots available for {meta.Name}");
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Status = "No screenshots available",
+                    Current = current,
+                    Total = total,
+                    CurrentGame = meta.Name
+                });
 
                 continue;
             }
 
-            StatusChanged?.Invoke($"Downloading screenshots for {meta.Name}");
+            ProgressChanged?.Invoke(new ProgressInfo
+            {
+                Current = current,
+                Total = total,
+                Status = "Downloading screenshots",
+                CurrentGame = meta.Name
+            });
 
             List<Task> tasks = new();
 
@@ -255,7 +361,13 @@ public class Fetcher
 
     public async Task UpdateOwnedGamesAsync(string cacheFolder)
     {
-        StatusChanged?.Invoke("Updating owned_games.json...");
+        ProgressChanged?.Invoke(new ProgressInfo
+        {
+            Current = 1,
+            Total = 1,
+            Status = "Updating owned_games.json"
+        });
+
         List<int> ids = Directory.EnumerateDirectories(cacheFolder)
             .Select(Path.GetFileName)
             .Where(x => int.TryParse(x, out _))
@@ -287,12 +399,32 @@ public class Fetcher
         {
             current++;
 
+            // Permanent failure
             if (failures.NoMetadata.Contains(appId))
             {
-                StatusChanged?.Invoke(
-                    $"[{current}/{total}] Skipping {appId} (known unavailable)");
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Current = current,
+                    Total = total,
+                    Status = "Skipping (no metadata)",
+                    CurrentGame = appId.ToString()
+                });
 
                 continue;
+            }
+
+            // Retry previous Steam 500's once per scrape.
+            if (failures.ServerError.Remove(appId))
+            {
+                failuresChanged = true;
+
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Current = current,
+                    Total = total,
+                    Status = "Retrying previous server error",
+                    CurrentGame = appId.ToString()
+                });
             }
 
             string targetDir = Path.Combine(targetFolder, appId.ToString());
@@ -307,27 +439,47 @@ public class Fetcher
 
                     if (existing != null &&
                         !string.IsNullOrWhiteSpace(existing.Name) &&
-                        !string.IsNullOrWhiteSpace(existing.Type))
+                        !string.IsNullOrWhiteSpace(existing.AppType))
                     {
-                        StatusChanged?.Invoke(
-                            $"[{current}/{total}] Skipping {existing.Name}");
+                        ProgressChanged?.Invoke(new ProgressInfo
+                        {
+                            Current = current,
+                            Total = total,
+                            Status = "Skipping",
+                            CurrentGame = existing.Name
+                        });
 
                         continue;
                     }
 
-                    StatusChanged?.Invoke(
-                        $"[{current}/{total}] Repairing {appId}");
+                    ProgressChanged?.Invoke(new ProgressInfo
+                    {
+                        Current = current,
+                        Total = total,
+                        Status = "Repairing metadata",
+                        CurrentGame = appId.ToString()
+                    });
                 }
                 catch
                 {
-                    StatusChanged?.Invoke(
-                        $"[{current}/{total}] Repairing {appId} (corrupt metadata)");
+                    ProgressChanged?.Invoke(new ProgressInfo
+                    {
+                        Current = current,
+                        Total = total,
+                        Status = "Repairing corrupt metadata",
+                        CurrentGame = appId.ToString()
+                    });
                 }
             }
             else
             {
-                StatusChanged?.Invoke(
-                    $"[{current}/{total}] Fetching {appId}");
+                ProgressChanged?.Invoke(new ProgressInfo
+                {
+                    Current = current,
+                    Total = total,
+                    Status = "Fetching metadata",
+                    CurrentGame = appId.ToString()
+                });
             }
 
             SteamFetchResult result = await GetSteamData(appId);
@@ -339,19 +491,43 @@ public class Fetcher
                     failures.NoMetadata.Add(appId);
                     failuresChanged = true;
 
-                    StatusChanged?.Invoke(
-                        $"[{current}/{total}] Steam has no metadata for {appId}");
+                    ProgressChanged?.Invoke(new ProgressInfo
+                    {
+                        Current = current,
+                        Total = total,
+                        Status = "No metadata available",
+                        CurrentGame = appId.ToString()
+                    });
+
+                    continue;
+
+                case SteamFetchStatus.ServerError:
+
+                    failures.ServerError.Add(appId);
+                    failuresChanged = true;
+
+                    ProgressChanged?.Invoke(new ProgressInfo
+                    {
+                        Current = current,
+                        Total = total,
+                        Status = "Steam server error (will retry next scrape)",
+                        CurrentGame = appId.ToString()
+                    });
 
                     continue;
 
                 case SteamFetchStatus.Success:
-
                     break;
 
                 default:
 
-                    StatusChanged?.Invoke(
-                        $"[{current}/{total}] Failed {appId} ({result.Status})");
+                    ProgressChanged?.Invoke(new ProgressInfo
+                    {
+                        Current = current,
+                        Total = total,
+                        Status = $"Failed ({result.Status})",
+                        CurrentGame = appId.ToString()
+                    });
 
                     continue;
             }
@@ -360,8 +536,13 @@ public class Fetcher
 
             await WriteMetaAsync(targetDir, meta);
 
-            StatusChanged?.Invoke(
-                $"[{current}/{total}] Saved {meta.Name}");
+            ProgressChanged?.Invoke(new ProgressInfo
+            {
+                Current = current,
+                Total = total,
+                Status = "Saved metadata",
+                CurrentGame = meta.Name
+            });
 
             await Task.Delay(Random.Shared.Next(200, 500));
         }
@@ -373,6 +554,7 @@ public class Fetcher
 
         await UpdateOwnedGamesAsync(targetFolder);
     }
+
     private async Task SaveFailuresAsync(CacheFailures failures)
     {
         await File.WriteAllTextAsync(

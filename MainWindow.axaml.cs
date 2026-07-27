@@ -1,51 +1,45 @@
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using Avalonia.Threading;
+using System.Threading.Tasks;
 
 namespace BR_QImport
 {
     public partial class MainWindow : Window
     {
-        Fetcher fetcher = new();
+        private readonly Fetcher fetcher = new();
 
         public MainWindow()
         {
             InitializeComponent();
 
-            CacheDirectoryTextBox.Text = Path.Combine(
-    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-    "..",
-    "LocalLow",
-    "NestedLoop",
-    "BOXROOM",
-    "steam_cache_v2");
+            CacheDirectoryTextBox.Text = Path.GetFullPath(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "..",
+                "LocalLow",
+                "NestedLoop",
+                "BOXROOM",
+                "steam_cache_v2"));
 
-            CacheDirectoryTextBox.Text = Path.GetFullPath(CacheDirectoryTextBox.Text);
-
-
-            fetcher.StatusChanged += text =>
+            fetcher.ProgressChanged += progress =>
             {
                 Dispatcher.UIThread.Post(() =>
                 {
-                    StatusTextBox.Text += $"{DateTime.Now:HH:mm:ss}  {text}{Environment.NewLine}";
+                    StatusLabel.Text = progress.Status;
+                    CurrentGameLabel.Text = progress.CurrentGame ?? "-";
 
-                    StatusTextBox.CaretIndex = StatusTextBox.Text.Length;
+                    ImportProgressBar.Maximum = Math.Max(1, progress.Total);
+                    ImportProgressBar.Value = progress.Current;
+
+                    ProgressLabel.Text = $"{progress.Current} / {progress.Total}";
                 });
             };
-        }
-        private void Log(string message)
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                StatusTextBox.Text += $"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}";
-                StatusTextBox.CaretIndex = StatusTextBox.Text.Length;
-            });
         }
 
         private void CloseButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -55,28 +49,35 @@ namespace BR_QImport
 
         private async void ImportButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
-
             ImportButton.IsEnabled = false;
 
             try
             {
-                StatusTextBox.Text = "Preparing...\n";
+                StatusLabel.Text = "Preparing...";
+                CurrentGameLabel.Text = "-";
+                ImportProgressBar.Maximum = 100;
+                ImportProgressBar.Value = 0;
+                ProgressLabel.Text = "";
 
                 if (string.IsNullOrWhiteSpace(JsonTextBox.Text))
                 {
-                    StatusTextBox.Text = "No JSON supplied.";
+                    StatusLabel.Text = "No JSON supplied.";
                     return;
                 }
 
                 if (string.IsNullOrWhiteSpace(CacheDirectoryTextBox.Text))
                 {
-                    StatusTextBox.Text = "No cache directory selected.";
+                    StatusLabel.Text = "No cache directory selected.";
                     return;
                 }
 
-                Directory.CreateDirectory(CacheDirectoryTextBox.Text);
+                string cacheDir = CacheDirectoryTextBox.Text;
 
-                using JsonDocument doc = JsonDocument.Parse(JsonTextBox.Text);
+                Directory.CreateDirectory(cacheDir);
+
+                await using FileStream stream = File.OpenRead(JsonTextBox.Text);
+
+                using JsonDocument doc = JsonDocument.Parse(stream);
 
                 List<int> appIds = doc.RootElement
                     .GetProperty("rgOwnedApps")
@@ -85,62 +86,49 @@ namespace BR_QImport
                     .Distinct()
                     .ToList();
 
-                StatusTextBox.Clear();
-
-                StatusTextBox.Text =
-                    $"Started: {DateTime.Now:G}{Environment.NewLine}" +
-                    $"Games: {appIds.Count}{Environment.NewLine}{Environment.NewLine}";
-
-                Log("Starting import...");
-
                 if (ScrapeCheckBox.IsChecked == true)
                 {
-                    Log($"Scraping {appIds.Count} games from Steam...");
-
-                    await fetcher.ScrapeGamesAsync(
-                        appIds,
-                        CacheDirectoryTextBox.Text);
+                    await fetcher.ScrapeGamesAsync(appIds, cacheDir);
                 }
                 else
                 {
-                    Log("Creating folders...");
-
                     foreach (int appId in appIds)
                     {
                         Directory.CreateDirectory(
-                            Path.Combine(CacheDirectoryTextBox.Text, appId.ToString()));
+                            Path.Combine(cacheDir, appId.ToString()));
                     }
 
-                    await fetcher.UpdateOwnedGamesAsync(
-                        CacheDirectoryTextBox.Text);
+                    await fetcher.UpdateOwnedGamesAsync(cacheDir);
                 }
+
                 if (CoverArtCheckBox.IsChecked == true)
                 {
-                    Log("Downloading cover art...");
-
-                    await fetcher.DownloadBoxArtAsync(
-                        CacheDirectoryTextBox.Text);
+                    await fetcher.DownloadBoxArtAsync(cacheDir);
                 }
 
                 if (ScreenshotCheckBox.IsChecked == true)
                 {
-                    Log($"Downloading screenshots for {appIds.Count} games...");
-                    await fetcher.DownloadScreenshotsAsync(
-                        CacheDirectoryTextBox.Text);
+                    await fetcher.DownloadScreenshotsAsync(cacheDir);
                 }
 
-                Log($"Done!\nImported {appIds.Count} games.");
+                StatusLabel.Text = "Import complete";
+                CurrentGameLabel.Text = $"{appIds.Count} games processed";
+
+                ImportProgressBar.Maximum = 1;
+                ImportProgressBar.Value = 1;
+
+                ProgressLabel.Text = $"{appIds.Count} games";
             }
             catch (Exception ex)
             {
-                Log(ex.ToString());
+                StatusLabel.Text = "Error";
+                CurrentGameLabel.Text = ex.Message;
             }
             finally
             {
                 ImportButton.IsEnabled = true;
             }
         }
-
 
         private void OpenSteamButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
@@ -160,23 +148,31 @@ namespace BR_QImport
                 FileTypeFilter =
                 [
                     new FilePickerFileType("JSON")
-            {
-                Patterns = ["*.json"]
-            }
+                    {
+                        Patterns = ["*.json"]
+                    }
                 ]
             });
 
             if (files.Count == 0)
                 return;
 
-            await using var stream = await files[0].OpenReadAsync();
-            using var reader = new StreamReader(stream);
-
-            JsonTextBox.Text = await reader.ReadToEndAsync();
+            JsonTextBox.Text = files[0].Path.LocalPath;
         }
 
-        private void BrowseCacheButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        private async void BrowseCacheButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
         {
+            var folders = await StorageProvider.OpenFolderPickerAsync(
+                new FolderPickerOpenOptions
+                {
+                    Title = "Select BOXROOM steam_cache_v2 folder",
+                    AllowMultiple = false
+                });
+
+            if (folders.Count == 0)
+                return;
+
+            CacheDirectoryTextBox.Text = folders[0].Path.LocalPath;
         }
 
         public class SteamUserData

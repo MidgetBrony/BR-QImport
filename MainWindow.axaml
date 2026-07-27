@@ -5,10 +5,10 @@
         mc:Ignorable="d"
         x:Class="BR_QImport.MainWindow"
         Title="BOXROOM Quick Import"
-        Width="800"
-        Height="650"
-        MinWidth="700"
-        MinHeight="550">
+        Width="700"
+        Height="520"
+        MinWidth="650"
+        MinHeight="500">
 
     <Grid Margin="15"
           RowDefinitions="Auto,Auto,Auto,*,Auto">
@@ -16,55 +16,51 @@
         <!-- Header -->
         <TextBlock Grid.Row="0"
                    Text="BOXROOM Steam Quick Import"
-                   FontSize="22"
+                   FontSize="20"
                    FontWeight="Bold"
-                   Margin="0,0,0,15"/>
+                   Margin="0,0,0,12"/>
 
-        <!-- JSON -->
+        <!-- Steam JSON -->
         <GroupBox Grid.Row="1"
                   Header="Steam UserData JSON">
+
             <Grid Margin="10"
-                  RowDefinitions="*,Auto">
+                  ColumnDefinitions="*,Auto,Auto"
+                  ColumnSpacing="8">
 
-                <TextBox Name="JsonTextBox"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         Height="220"
-                         PlaceholderText="Paste the JSON from https://store.steampowered.com/dynamicstore/userdata/ here..." />
+                <TextBox x:Name="JsonTextBox"
+                         VerticalAlignment="Center"
+                         Watermark="Select userdata.json..." />
 
-                <StackPanel Grid.Row="1"
-                            Orientation="Horizontal"
-                            HorizontalAlignment="Right"
-                            Margin="0,10,0,0"
-                            Spacing="8">
+                <Button Grid.Column="1"
+                        x:Name="BrowseJsonButton"
+                        Content="Browse..."
+                        Click="BrowseJsonButton_Click"/>
 
-                    <Button Name="BrowseJsonButton"
-                            Content="Browse JSON..."
-                            Click="BrowseJsonButton_Click" />
-
-                    <Button Name="OpenSteamButton"
-                            Content="Open Steam UserData Page"
-                            Click="OpenSteamButton_Click" />
-
-                </StackPanel>
+                <Button Grid.Column="2"
+                        x:Name="OpenSteamButton"
+                        Content="Steam Page"
+                        Click="OpenSteamButton_Click"/>
 
             </Grid>
+
         </GroupBox>
 
-        <!-- Cache Directory -->
+        <!-- Cache -->
         <GroupBox Grid.Row="2"
-                  Header="BOXROOM Cache Directory"
-                  Margin="0,15,0,0">
+                  Header="BOXROOM Cache"
+                  Margin="0,12,0,0">
 
             <Grid Margin="10"
                   ColumnDefinitions="*,Auto"
-                  ColumnSpacing="10">
+                  ColumnSpacing="8">
 
-                <TextBox Name="CacheDirectoryTextBox"
-                         PlaceholderText="Path to steam_cache_v2" />
+                <TextBox x:Name="CacheDirectoryTextBox"
+                         VerticalAlignment="Center"
+                         Watermark="steam_cache_v2"/>
 
                 <Button Grid.Column="1"
-                        Name="BrowseCacheButton"
+                        x:Name="BrowseCacheButton"
                         Content="Browse..."
                         Click="BrowseCacheButton_Click"/>
 
@@ -72,55 +68,86 @@
 
         </GroupBox>
 
-        <!-- Status -->
+        <!-- Progress -->
         <GroupBox Grid.Row="3"
-                  Header="Status"
-                  Margin="0,15,0,0">
+                  Header="Progress"
+                  Margin="0,12,0,0">
 
-            <TextBox Name="StatusTextBox"
-                     Margin="10"
-                     IsReadOnly="True"
-                     AcceptsReturn="True"
-                     TextWrapping="Wrap"
-                     Text="Ready." />
+            <StackPanel Margin="10"
+                        Spacing="6">
+
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Text="Status:"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="1"
+                               x:Name="StatusLabel"
+                               Margin="8,0,0,0"
+                               Text="Ready"/>
+                </Grid>
+
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Text="Game:"
+                               FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="1"
+                               x:Name="CurrentGameLabel"
+                               Margin="8,0,0,0"
+                               Text="-"/>
+                </Grid>
+
+                <ProgressBar x:Name="ImportProgressBar"
+                             Height="18"
+                             Minimum="0"
+                             Maximum="100"/>
+
+                <TextBlock x:Name="ProgressLabel"
+                           HorizontalAlignment="Center"
+                           Text="0 / 0"/>
+
+            </StackPanel>
 
         </GroupBox>
 
-<!-- Bottom Buttons -->
-<StackPanel Grid.Row="4"
-            Orientation="Horizontal"
-            HorizontalAlignment="Right"
-            Margin="0,15,0,0"
-            Spacing="10">
+        <!-- Footer -->
+        <DockPanel Grid.Row="4"
+                   Margin="0,12,0,0">
 
-    <CheckBox x:Name="ScrapeCheckBox"
-              Content="Download metadata"
-              IsChecked="True"
-              VerticalAlignment="Center" />
+            <StackPanel Orientation="Horizontal"
+                        Spacing="12"
+                        DockPanel.Dock="Left">
 
-    <CheckBox x:Name="CoverArtCheckBox"
-              Content="Download cover art"
-              IsChecked="True"
-              VerticalAlignment="Center" />
+                <CheckBox x:Name="ScrapeCheckBox"
+                          Content="Metadata"
+                          IsChecked="True"/>
 
-    <CheckBox x:Name="ScreenshotCheckBox"
-              Content="Download screenshots (may take a while)"
-              IsChecked="False"
-              VerticalAlignment="Center" />
+                <CheckBox x:Name="CoverArtCheckBox"
+                          Content="Cover Art"
+                          IsChecked="True"/>
 
-    <Button Name="ImportButton"
-            Content="Import"
-            Width="120"
-            Height="35"
-            Click="ImportButton_Click"/>
+                <CheckBox x:Name="ScreenshotCheckBox"
+                          Content="Screenshots"
+                          IsChecked="False"/>
 
-    <Button Name="CloseButton"
-            Content="Close"
-            Width="120"
-            Height="35"
-            Click="CloseButton_Click"/>
+            </StackPanel>
 
-</StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        Spacing="8"
+                        HorizontalAlignment="Right"
+                        DockPanel.Dock="Right">
+
+                <Button x:Name="ImportButton"
+                        Width="90"
+                        Content="Import"
+                        Click="ImportButton_Click"/>
+
+                <Button x:Name="CloseButton"
+                        Width="90"
+                        Content="Close"
+                        Click="CloseButton_Click"/>
+
+            </StackPanel>
+
+        </DockPanel>
 
     </Grid>
+
 </Window>
