@@ -1,156 +1,163 @@
 # BR-QImport
 
-Quickly build a complete **BOXROOM** Steam cache from your Steam library.
+BR-QImport quickly builds a complete **BOXROOM** Steam cache from the games owned by your Steam account.
 
-BR-QImport imports your owned Steam games into a BOXROOM-compatible `steam_cache_v2` folder and can optionally download:
-
-- 📦 Game metadata
-- 🖼️ Box art
-- 📸 Screenshots
-
-This is intended as a companion tool for BOXROOM users who want to populate their library without manually launching every game.
-
----
+It reads your Steam library from Steam's Dynamic Store userdata page, creates BOXROOM's `owned_games.json`, and can download game metadata, cover art, and screenshots.
 
 ## Features
 
-- Import directly from Steam's Dynamic Store JSON
-- Generate `owned_games.json`
-- Download Steam metadata
-- Download library cover art
-- Download up to 3 screenshots per game
-- Resume interrupted imports
-- Automatically skips already completed games
-- Handles Steam API rate limits automatically
-- Caches failed downloads to avoid repeated requests
-
----
+- Imports the games owned by the currently signed-in Steam account
+- Generates BOXROOM's `owned_games.json`
+- Downloads Steam Store metadata
+- Downloads library cover art when available
+- Optionally downloads up to three screenshots per game
+- Resumes interrupted imports and skips completed work
+- Handles Steam rate limits automatically
+- Remembers unavailable downloads to avoid repeatedly requesting them
 
 ## Requirements
 
-- Windows
-- .NET
+- Windows or 64-bit Linux
+- A Steam account signed in through your web browser
 - BOXROOM
+- The .NET Desktop Runtime for framework-dependent builds; the Linux release is self-contained
 
----
+## Running on Linux
 
-## Getting Started
+Download and extract the `linux-x64` release. Linux may not preserve the executable permission when the archive is extracted, so open a terminal in the extracted folder and run:
 
-### 1. Download your Steam Library JSON
-
-Open:
-
-https://store.steampowered.com/dynamicstore/userdata/
-
-Save the page contents as a `.json` file.
-
-### 2. Open BR-QImport
-
-Browse to your downloaded JSON file.
-
-The default cache folder is:
-
-```text
-%LocalAppData%\..\LocalLow\NestedLoop\BOXROOM\steam_cache_v2
+```bash
+chmod +x BR-QImport
+./BR-QImport
 ```
 
-You can change this if your BOXROOM cache lives elsewhere.
+BR-QImport works with Steam libraries whose Windows games run through **Proton**. The importer reads the Steam userdata JSON and creates BOXROOM's cache; it does not require the imported games themselves to have native Linux versions.
 
-### 3. Choose what to import
+If BOXROOM also runs through Proton, use **Browse** beside **BOXROOM Cache** and select BOXROOM's `steam_cache_v2` directory inside the appropriate Proton prefix. Its path will typically resemble:
+
+```text
+~/.local/share/Steam/steamapps/compatdata/<APP-ID>/pfx/drive_c/users/steamuser/AppData/LocalLow/NestedLoop/BOXROOM/steam_cache_v2
+```
+
+The Steam library or prefix may be elsewhere if you use a custom Steam library location, Flatpak Steam, or another compatibility manager.
+
+## Quick start
+
+### 1. Open your Steam userdata page
+
+Start BR-QImport and click **Steam Page** (or **Open Steam Link**, depending on the version).
+
+Your browser will open:
+
+```text
+https://store.steampowered.com/dynamicstore/userdata/
+```
+
+Steam generates this page for the account currently signed in through your browser. If you are asked to sign in, do so and then open the link again.
+
+### 2. Save the current page as JSON
+
+The page should display JSON containing entries such as `rgWishlist` and `rgOwnedApps`. BR-QImport uses `rgOwnedApps` to identify your owned games.
+
+Save the **current browser page** as a JSON file:
+
+1. Click the browser's **Save** button if its JSON viewer provides one, or press `Ctrl+S`.
+2. Name the file `userdata.json`.
+3. Make sure it is saved as a `.json` file, not `.html` or `.txt`.
+
+Do not copy and paste the JSON into BR-QImport. Save the page itself and select the saved file.
+
+> [!IMPORTANT]
+> The saved userdata may reveal information about your Steam account and library. Keep it private and do not upload it to GitHub or share it publicly.
+
+### 3. Select the saved file
+
+Return to BR-QImport, click **Browse** beside **Steam UserData JSON**, and select the `userdata.json` file you just saved.
+
+### 4. Confirm the BOXROOM cache folder
+
+BR-QImport automatically selects BOXROOM's usual cache location:
+
+```text
+%USERPROFILE%\AppData\LocalLow\NestedLoop\BOXROOM\steam_cache_v2
+```
+
+Use **Browse** to select another `steam_cache_v2` folder if your BOXROOM data is stored elsewhere.
+
+On Linux, select the cache inside BOXROOM's Proton prefix as described in [Running on Linux](#running-on-linux).
+
+### 5. Choose what to download
 
 | Option | Description |
-|---------|-------------|
-| Scrape Metadata | Downloads game information from the Steam Store API |
-| Download Cover Art | Downloads `library_600x900.jpg` when available |
-| Download Screenshots | Downloads up to 3 screenshots per game |
+| --- | --- |
+| **Metadata** | Downloads game information from the Steam Store. |
+| **Cover Art** | Downloads `library_600x900.jpg` artwork when available. |
+| **Screenshots** | Downloads up to three screenshots per game. This can considerably increase the import time. |
 
-### 4. Click Import
+### 6. Import your library
 
-The program will:
+Click **Import**. BR-QImport will create the required game folders, download the selected content, and create or update `owned_games.json`.
 
-- Create missing game folders
-- Download metadata
-- Download artwork
-- Create/update `owned_games.json`
+The status, current game, and overall progress are displayed in the application. You can safely run the importer again; completed work is skipped automatically.
 
-Progress is shown in the log window.
-
----
-
-# Output Structure
+## Output structure
 
 ```text
 steam_cache_v2/
-│
 ├── owned_games.json
-│
 ├── 570/
 │   ├── meta.json
 │   ├── boxart.jpg
 │   ├── screen_0.jpg
 │   ├── screen_1.jpg
 │   └── screen_2.jpg
-│
 └── 730/
     ├── meta.json
     ├── boxart.jpg
     └── screen_0.jpg
 ```
 
----
+Each numbered directory corresponds to a Steam application ID.
 
-# Metadata
+## Metadata
 
-Each `meta.json` contains:
+Depending on what Steam provides, each `meta.json` may include:
 
-- Name
-- Type
-- Release Date
-- Developers
-- Publishers
+- Name and application type
+- Release date
+- Developers and publishers
 - Genres
-- Short Description
-- Detailed Description
-- About The Game
+- Short and detailed descriptions
+- About-the-game text
 - Screenshot URLs
 
----
+## Failed downloads
 
-# Failure Cache
+BR-QImport maintains a local `failures.json` file that remembers games for which metadata, cover art, or screenshots were unavailable. This prevents the same missing content from being requested on every run.
 
-The importer maintains a local `failures.json` file.
+Delete `failures.json` if you want BR-QImport to retry all previously failed downloads.
 
-It remembers games that are known to be missing:
+## Steam rate limiting
 
-- Metadata
-- Cover Art
-- Screenshots
+Steam may temporarily limit requests during a large import. When that happens, BR-QImport waits for the requested retry interval and then continues automatically.
 
-Delete this file if you wish to retry failed downloads.
+## Troubleshooting
 
----
+### The JSON file is rejected or `rgOwnedApps` is missing
 
-# Rate Limiting
+- Confirm that you were signed into the correct Steam account when the page was opened.
+- Open the Steam userdata link again after signing in.
+- Save the JSON page directly instead of saving a screenshot or copying formatted text.
+- Confirm that the filename ends in `.json` rather than `.json.txt` or `.html`.
 
-Steam occasionally rate limits large imports.
+### Some games have no metadata or artwork
 
-When this happens BR-QImport automatically:
+Tools, dedicated servers, demos, delisted games, and some other Steam applications may not have public Store metadata or artwork. This is expected and does not prevent the rest of the library from importing.
 
-- Waits for Steam's requested retry interval
-- Retries automatically
-- Continues where it left off
+## Privacy
 
----
+BR-QImport uses the userdata file locally to obtain application IDs. Store metadata and artwork are downloaded from publicly available Steam endpoints. Your saved userdata file is not intended to be committed to a repository or distributed with a release.
 
-# Notes
+## License
 
-- Only publicly available Steam Store metadata is downloaded.
-- Cover art availability depends on the Steam Store.
-- Some applications (tools, dedicated servers, demos, or delisted titles) may not have metadata or artwork.
-- Existing valid metadata is skipped automatically, making repeated runs safe.
-
----
-
-# License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
