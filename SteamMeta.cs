@@ -6,9 +6,10 @@ namespace BR_QImport
     public class SteamMeta
     {
         public int PlayTimeMinutes { get; set; }
+        public string AppType { get; set; } = "";
+        public string? GameType { get; set; }
         public string Name { get; set; } = "";
         public string ShortDescription { get; set; } = "";
-        public string AppType { get; set; } = "";
         public string DetailedDescription { get; set; } = "";
         public string AboutTheGame { get; set; } = "";
         public string BoxArtUrlBase { get; set; } = "";
@@ -17,7 +18,10 @@ namespace BR_QImport
         public List<string> Developers { get; set; } = new();
         public List<string> Publishers { get; set; } = new();
         public List<string> Genres { get; set; } = new();
+        public string LaunchExePath { get; set; } = "";
+        public string LaunchArguments { get; set; } = "";
         public List<string> ScreenshotUrls { get; set; } = new();
+        public int AppId { get; set; }
     }
 
 

@@ -7,6 +7,7 @@ It reads your Steam library from Steam's Dynamic Store userdata page, creates BO
 ## Features
 
 - Imports the games owned by the currently signed-in Steam account
+- Optionally includes playable games shared through Steam Families
 - Generates BOXROOM's `owned_games.json`
 - Downloads Steam Store metadata
 - Downloads library cover art when available
@@ -74,6 +75,20 @@ Do not copy and paste the JSON into BR-QImport. Save the page itself and select 
 
 Return to BR-QImport, click **Browse** beside **Steam UserData JSON**, and select the `userdata.json` file you just saved.
 
+### Optional: include Steam Family games
+
+Enable **Include Family Shared**, then open the following page while signed in to Steam:
+
+```text
+https://store.steampowered.com/pointssummary/ajaxgetasyncconfig
+```
+
+Paste either the `webapi_token` value or the complete JSON response into the token box. BR-QImport uses the token only for the current import and does not save it.
+
+Playable family games that are not already present in `rgOwnedApps` are imported as BOXROOM custom games. Their stable custom IDs begin at `-500000`, while their launch paths retain the original Steam app IDs in the form `steam://run//<APP-ID>`. Install the companion **FamilyOwned** MelonLoader mod so BOXROOM can open these Steam URI launch paths.
+
+Steam's Family library endpoint is undocumented and may change. If Steam rejects the token, reload the token page and paste the fresh value.
+
 ### 4. Confirm the BOXROOM cache folder
 
 BR-QImport automatically selects BOXROOM's usual cache location:
@@ -111,13 +126,13 @@ steam_cache_v2/
 │   ├── screen_0.jpg
 │   ├── screen_1.jpg
 │   └── screen_2.jpg
-└── 730/
+└── -500000/
     ├── meta.json
     ├── boxart.jpg
     └── screen_0.jpg
 ```
 
-Each numbered directory corresponds to a Steam application ID.
+Positive numbered directories correspond to owned Steam application IDs. Family-shared games use stable negative custom IDs beginning at `-500000`.
 
 ## Metadata
 

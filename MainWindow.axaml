@@ -6,12 +6,12 @@
         x:Class="BR_QImport.MainWindow"
         Title="BOXROOM Quick Import"
         Width="700"
-        Height="520"
+        Height="620"
         MinWidth="650"
         MinHeight="500">
 
     <Grid Margin="15"
-          RowDefinitions="Auto,Auto,Auto,*,Auto">
+          RowDefinitions="Auto,Auto,Auto,Auto,*,Auto">
 
         <!-- Header -->
         <TextBlock Grid.Row="0"
@@ -46,8 +46,43 @@
 
         </GroupBox>
 
-        <!-- Cache -->
+        <!-- Steam Family -->
         <GroupBox Grid.Row="2"
+                  Header="Steam Family"
+                  Margin="0,12,0,0">
+
+            <Grid Margin="10"
+                  RowDefinitions="Auto,Auto"
+                  ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="8"
+                  RowSpacing="8">
+
+                <CheckBox x:Name="IncludeFamilyCheckBox"
+                          Grid.ColumnSpan="2"
+                          Content="Include Family Shared"/>
+
+                <TextBlock Grid.Row="1"
+                           VerticalAlignment="Center"
+                           Text="Token:"/>
+
+                <TextBox x:Name="FamilyTokenTextBox"
+                         Grid.Row="1"
+                         Grid.Column="1"
+                         PasswordChar="●"
+                         Watermark="Paste webapi_token or the complete token-page JSON"/>
+
+                <Button x:Name="OpenFamilyTokenButton"
+                        Grid.Row="1"
+                        Grid.Column="2"
+                        Content="Token Page"
+                        Click="OpenFamilyTokenButton_Click"/>
+
+            </Grid>
+
+        </GroupBox>
+
+        <!-- Cache -->
+        <GroupBox Grid.Row="3"
                   Header="BOXROOM Cache"
                   Margin="0,12,0,0">
 
@@ -69,7 +104,7 @@
         </GroupBox>
 
         <!-- Progress -->
-        <GroupBox Grid.Row="3"
+        <GroupBox Grid.Row="4"
                   Header="Progress"
                   Margin="0,12,0,0">
 
@@ -108,7 +143,7 @@
         </GroupBox>
 
         <!-- Footer -->
-        <DockPanel Grid.Row="4"
+        <DockPanel Grid.Row="5"
                    Margin="0,12,0,0">
 
             <StackPanel Orientation="Horizontal"

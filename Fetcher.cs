@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -33,9 +34,169 @@ public class ProgressInfo
 
 public class Fetcher
 {
+    private const int FirstFamilyCustomAppId = -500000;
     private readonly HttpClient _client = new();
     public event Action<ProgressInfo>? ProgressChanged;
     private readonly string _failureFile = "failures.json";
+
+    public async Task<List<int>> GetFamilySharedAppIdsAsync(
+        string tokenInput,
+        IReadOnlySet<int> ownedAppIds)
+    {
+        string token = ExtractWebApiToken(tokenInput);
+        string steamId = GetSteamIdFromToken(token);
+
+        ProgressChanged?.Invoke(new ProgressInfo
+        {
+            Status = "Checking Steam Family library"
+        });
+
+        using JsonDocument familyDocument = await GetSteamApiResponseAsync(
+            "IFamilyGroupsService/GetFamilyGroupForUser/v1",
+            new Dictionary<string, string>
+            {
+                ["access_token"] = token,
+                ["steamid"] = steamId,
+                ["include_family_group_response"] = "true"
+            });
+
+        JsonElement familyResponse = familyDocument.RootElement.GetProperty("response");
+        if (familyResponse.TryGetProperty("is_not_member_of_any_group", out JsonElement notMember) &&
+            notMember.ValueKind == JsonValueKind.True)
+        {
+            throw new InvalidOperationException("This Steam account is not a member of a Steam Family.");
+        }
+
+        if (!familyResponse.TryGetProperty("family_groupid", out JsonElement familyGroupIdElement))
+            throw new InvalidOperationException("Steam did not return a Family group ID.");
+
+        string familyGroupId = familyGroupIdElement.ValueKind == JsonValueKind.String
+            ? familyGroupIdElement.GetString() ?? ""
+            : familyGroupIdElement.GetRawText();
+
+        if (string.IsNullOrWhiteSpace(familyGroupId) || familyGroupId == "0")
+            throw new InvalidOperationException("This Steam account is not a member of a Steam Family.");
+
+        using JsonDocument libraryDocument = await GetSteamApiResponseAsync(
+            "IFamilyGroupsService/GetSharedLibraryApps/v1",
+            new Dictionary<string, string>
+            {
+                ["access_token"] = token,
+                ["family_groupid"] = familyGroupId,
+                ["include_own"] = "false",
+                ["include_excluded"] = "true",
+                ["include_free"] = "false",
+                ["include_non_games"] = "false",
+                ["language"] = "english"
+            });
+
+        JsonElement libraryResponse = libraryDocument.RootElement.GetProperty("response");
+        if (!libraryResponse.TryGetProperty("apps", out JsonElement apps) ||
+            apps.ValueKind != JsonValueKind.Array)
+        {
+            return new List<int>();
+        }
+
+        return apps.EnumerateArray()
+            .Where(app => !app.TryGetProperty("exclude_reason", out JsonElement reason) ||
+                          reason.GetInt32() == 0)
+            .Select(app => app.GetProperty("appid").GetInt32())
+            .Where(appId => !ownedAppIds.Contains(appId))
+            .Distinct()
+            .ToList();
+    }
+
+    private async Task<JsonDocument> GetSteamApiResponseAsync(
+        string method,
+        IReadOnlyDictionary<string, string> parameters)
+    {
+        string query = string.Join("&", parameters.Select(pair =>
+            $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"));
+
+        using HttpResponseMessage response = await _client.GetAsync(
+            $"https://api.steampowered.com/{method}/?{query}");
+
+        if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or
+            System.Net.HttpStatusCode.Forbidden)
+        {
+            throw new InvalidOperationException(
+                "Steam rejected the Family token. Open the token page again and paste a fresh token.");
+        }
+
+        response.EnsureSuccessStatusCode();
+        string json = await response.Content.ReadAsStringAsync();
+
+        try
+        {
+            return JsonDocument.Parse(json);
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException("Steam returned an invalid Family library response.");
+        }
+    }
+
+    private static string ExtractWebApiToken(string input)
+    {
+        string value = input.Trim().Trim('"', '\'');
+        if (value.StartsWith('{'))
+        {
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(value);
+                value = document.RootElement
+                    .GetProperty("data")
+                    .GetProperty("webapi_token")
+                    .GetString() ?? "";
+            }
+            catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+            {
+                throw new InvalidOperationException(
+                    "The token JSON does not contain data.webapi_token.");
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+            throw new InvalidOperationException("Enter a Steam Family token.");
+
+        return value;
+    }
+
+    private static string GetSteamIdFromToken(string token)
+    {
+        string[] parts = token.Split('.');
+        if (parts.Length != 3)
+            throw new InvalidOperationException("The Steam Family token is not a valid token.");
+
+        try
+        {
+            string payload = parts[1].Replace('-', '+').Replace('_', '/');
+            payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+            using JsonDocument document = JsonDocument.Parse(
+                Encoding.UTF8.GetString(Convert.FromBase64String(payload)));
+
+            JsonElement root = document.RootElement;
+            string steamId = root.GetProperty("sub").ToString();
+
+            if (root.TryGetProperty("exp", out JsonElement expires) &&
+                expires.TryGetInt64(out long expiresAt) &&
+                DateTimeOffset.UtcNow.ToUnixTimeSeconds() >= expiresAt)
+            {
+                throw new InvalidOperationException(
+                    "The Steam Family token has expired. Open the token page again.");
+            }
+
+            return steamId;
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch
+        {
+            throw new InvalidOperationException("The Steam Family token could not be read.");
+        }
+    }
 
     private async Task WriteMetaAsync(string folder, SteamMeta meta)
     {
@@ -47,6 +208,169 @@ public class Fetcher
             {
                 WriteIndented = true
             }));
+    }
+
+    public async Task ImportFamilySharedGamesAsync(
+        IEnumerable<int> steamAppIds,
+        string cacheFolder)
+    {
+        Directory.CreateDirectory(cacheFolder);
+
+        List<int> familyIds = steamAppIds.Distinct().OrderBy(id => id).ToList();
+        Dictionary<int, int> existingMappings = await LoadFamilyCustomMappingsAsync(cacheFolder);
+        HashSet<int> currentFamilyIds = familyIds.ToHashSet();
+
+        foreach ((int steamAppId, int customAppId) in existingMappings.ToList())
+        {
+            if (currentFamilyIds.Contains(steamAppId))
+                continue;
+
+            string staleDirectory = Path.Combine(cacheFolder, customAppId.ToString());
+            if (Directory.Exists(staleDirectory))
+                Directory.Delete(staleDirectory, recursive: true);
+
+            existingMappings.Remove(steamAppId);
+        }
+
+        string? boxroomDataDirectory = Directory.GetParent(cacheFolder)?.FullName;
+        if (boxroomDataDirectory != null)
+        {
+            string legacyFamilyFile = Path.Combine(boxroomDataDirectory, "familyowned.json");
+            if (File.Exists(legacyFamilyFile))
+                File.Delete(legacyFamilyFile);
+        }
+
+        HashSet<int> usedCustomIds = Directory.EnumerateDirectories(cacheFolder)
+            .Select(Path.GetFileName)
+            .Where(name => int.TryParse(name, out int id) && id <= FirstFamilyCustomAppId)
+            .Select(name => int.Parse(name!))
+            .ToHashSet();
+
+        int nextCustomId = FirstFamilyCustomAppId;
+        int current = 0;
+
+        foreach (int steamAppId in familyIds)
+        {
+            current++;
+            bool isNewMapping = !existingMappings.TryGetValue(steamAppId, out int customAppId);
+            if (isNewMapping)
+            {
+                while (usedCustomIds.Contains(nextCustomId))
+                    nextCustomId--;
+
+                customAppId = nextCustomId;
+            }
+
+            ProgressChanged?.Invoke(new ProgressInfo
+            {
+                Current = current,
+                Total = familyIds.Count,
+                Status = "Importing family game as custom",
+                CurrentGame = steamAppId.ToString()
+            });
+
+            string oldSteamDirectory = Path.Combine(cacheFolder, steamAppId.ToString());
+            string customDirectory = Path.Combine(cacheFolder, customAppId.ToString());
+
+            SteamMeta? meta = await TryReadMetaAsync(customDirectory)
+                ?? await TryReadMetaAsync(oldSteamDirectory);
+
+            if (meta == null || string.IsNullOrWhiteSpace(meta.Name))
+            {
+                SteamFetchResult result = await GetSteamData(steamAppId);
+                if (result.Status != SteamFetchStatus.Success || result.Meta == null)
+                {
+                    ProgressChanged?.Invoke(new ProgressInfo
+                    {
+                        Current = current,
+                        Total = familyIds.Count,
+                        Status = $"Family metadata failed ({result.Status})",
+                        CurrentGame = steamAppId.ToString()
+                    });
+                    continue;
+                }
+
+                meta = result.Meta;
+            }
+
+            if (isNewMapping)
+            {
+                usedCustomIds.Add(customAppId);
+                nextCustomId--;
+            }
+
+            Directory.CreateDirectory(customDirectory);
+            CopyCachedMedia(oldSteamDirectory, customDirectory);
+
+            if (!meta.AppType.Equals("custom", StringComparison.OrdinalIgnoreCase))
+                meta.GameType = meta.AppType;
+            meta.AppType = "custom";
+            meta.AppId = customAppId;
+            meta.LaunchExePath = $"steam://run//{steamAppId}";
+            meta.LaunchArguments = "";
+            await WriteMetaAsync(customDirectory, meta);
+
+            if (Directory.Exists(oldSteamDirectory))
+                Directory.Delete(oldSteamDirectory, recursive: true);
+        }
+    }
+
+    private static async Task<Dictionary<int, int>> LoadFamilyCustomMappingsAsync(string cacheFolder)
+    {
+        Dictionary<int, int> mappings = new();
+
+        foreach (string directory in Directory.EnumerateDirectories(cacheFolder))
+        {
+            if (!int.TryParse(Path.GetFileName(directory), out int customId) ||
+                customId > FirstFamilyCustomAppId)
+                continue;
+
+            SteamMeta? meta = await TryReadMetaAsync(directory);
+            if (meta != null && TryGetSteamLaunchAppId(meta, out int steamAppId))
+                mappings[steamAppId] = customId;
+        }
+
+        return mappings;
+    }
+
+    private static async Task<SteamMeta?> TryReadMetaAsync(string directory)
+    {
+        string path = Path.Combine(directory, "meta.json");
+        if (!File.Exists(path))
+            return null;
+
+        try
+        {
+            return JsonSerializer.Deserialize<SteamMeta>(await File.ReadAllTextAsync(path));
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetSteamLaunchAppId(SteamMeta meta, out int steamAppId)
+    {
+        const string Prefix = "steam://run//";
+        steamAppId = 0;
+        return meta.LaunchExePath.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase) &&
+               int.TryParse(meta.LaunchExePath[Prefix.Length..].TrimEnd('/'), out steamAppId);
+    }
+
+    private static void CopyCachedMedia(string sourceDirectory, string targetDirectory)
+    {
+        if (!Directory.Exists(sourceDirectory))
+            return;
+
+        foreach (string sourcePath in Directory.EnumerateFiles(sourceDirectory))
+        {
+            if (Path.GetFileName(sourcePath).Equals("meta.json", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            string targetPath = Path.Combine(targetDirectory, Path.GetFileName(sourcePath));
+            if (!File.Exists(targetPath))
+                File.Copy(sourcePath, targetPath);
+        }
     }
     public async Task DownloadBoxArtAsync(string boxRoomCachePath)
     {
@@ -106,8 +430,11 @@ public class Fetcher
 
             try
             {
+                int storeAppId = TryGetSteamLaunchAppId(meta, out int familySteamAppId)
+                    ? familySteamAppId
+                    : appId;
                 string url =
-                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{appId}/library_600x900.jpg";
+                    $"https://cdn.cloudflare.steamstatic.com/steam/apps/{storeAppId}/library_600x900.jpg";
 
                 byte[] image = await _client.GetByteArrayAsync(url);
 
@@ -229,6 +556,7 @@ public class Fetcher
                 Meta = new SteamMeta
                 {
                     PlayTimeMinutes = 0,
+                    AppId = steamId,
                     Name = gameData["name"]?.ToString() ?? "",
                     AppType = gameData["type"]?.ToString() ?? "",
                     ShortDescription = gameData["short_description"]?.ToString() ?? "",
@@ -371,7 +699,7 @@ public class Fetcher
         List<int> ids = Directory.EnumerateDirectories(cacheFolder)
             .Select(Path.GetFileName)
             .Where(x => int.TryParse(x, out _))
-            .Select(int.Parse)
+            .Select(name => int.Parse(name!))
             .OrderBy(x => x)
             .ToList();
 

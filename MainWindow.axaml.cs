@@ -79,27 +79,40 @@ namespace BR_QImport
 
                 using JsonDocument doc = JsonDocument.Parse(stream);
 
-                List<int> appIds = doc.RootElement
+                List<int> ownedAppIds = doc.RootElement
                     .GetProperty("rgOwnedApps")
                     .EnumerateArray()
                     .Select(x => x.GetInt32())
                     .Distinct()
                     .ToList();
 
+                List<int> familyAppIds = new();
+
+                if (IncludeFamilyCheckBox.IsChecked == true)
+                {
+                    HashSet<int> ownedSet = ownedAppIds.ToHashSet();
+                    familyAppIds = await fetcher.GetFamilySharedAppIdsAsync(
+                        FamilyTokenTextBox.Text ?? "",
+                        ownedSet);
+
+                }
+
                 if (ScrapeCheckBox.IsChecked == true)
                 {
-                    await fetcher.ScrapeGamesAsync(appIds, cacheDir);
+                    await fetcher.ScrapeGamesAsync(ownedAppIds, cacheDir);
                 }
                 else
                 {
-                    foreach (int appId in appIds)
+                    foreach (int appId in ownedAppIds)
                     {
                         Directory.CreateDirectory(
                             Path.Combine(cacheDir, appId.ToString()));
                     }
 
-                    await fetcher.UpdateOwnedGamesAsync(cacheDir);
                 }
+
+                await fetcher.ImportFamilySharedGamesAsync(familyAppIds, cacheDir);
+                await fetcher.UpdateOwnedGamesAsync(cacheDir);
 
                 if (CoverArtCheckBox.IsChecked == true)
                 {
@@ -112,12 +125,13 @@ namespace BR_QImport
                 }
 
                 StatusLabel.Text = "Import complete";
-                CurrentGameLabel.Text = $"{appIds.Count} games processed";
+                int processedCount = ownedAppIds.Count + familyAppIds.Count;
+                CurrentGameLabel.Text = $"{processedCount} games processed";
 
                 ImportProgressBar.Maximum = 1;
                 ImportProgressBar.Value = 1;
 
-                ProgressLabel.Text = $"{appIds.Count} games";
+                ProgressLabel.Text = $"{processedCount} games";
             }
             catch (Exception ex)
             {
@@ -135,6 +149,15 @@ namespace BR_QImport
             Process.Start(new ProcessStartInfo
             {
                 FileName = "https://store.steampowered.com/dynamicstore/userdata/",
+                UseShellExecute = true
+            });
+        }
+
+        private void OpenFamilyTokenButton_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "https://store.steampowered.com/pointssummary/ajaxgetasyncconfig",
                 UseShellExecute = true
             });
         }
