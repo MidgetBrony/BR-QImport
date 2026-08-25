@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "type": "tool",
+  "id": "br-qimport",
+  "name": "BR-QImport",
+  "author": "MidgetBrony",
+  "description": "Import your Steam library and Family Shared games into BOXROOM without manually installing or updating QImport.",
+  "repository": "https://github.com/MidgetBrony/BR-QImport",
+  "requirements": {},
+  "dependencies": [],
+  "release": {
+    "provider": "github",
+    "assetWindows": "BR-QImport-v*-win-x64.zip",
+    "assetLinux": "BR-QImport-v*-linux-x64.zip",
+    "entryPointWindows": "BR-QImport.exe",
+    "entryPointLinux": "BR-QImport"
+  }
+}
