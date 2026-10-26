@@ -3,6 +3,17 @@ using System.Collections.Generic;
 
 namespace BR_QImport
 {
+    public class OwnedGamesCachePayload
+    {
+        public int Version { get; set; }
+
+        public List<int> AppIds { get; set; } = new();
+
+        public Dictionary<int, string> Names { get; set; } = new();
+
+        public Dictionary<int, int> Playtime { get; set; } = new();
+    }
+
     public class SteamMeta
     {
         public int PlayTimeMinutes { get; set; }

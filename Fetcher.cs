@@ -35,6 +35,7 @@ public class ProgressInfo
 public class Fetcher
 {
     private const int FirstFamilyCustomAppId = -500000;
+    private const int OwnedGamesCacheVersion = 2;
     private readonly HttpClient _client = new();
     public event Action<ProgressInfo>? ProgressChanged;
     private readonly string _failureFile = "failures.json";
@@ -696,21 +697,62 @@ public class Fetcher
             Status = "Updating owned_games.json"
         });
 
-        List<int> ids = Directory.EnumerateDirectories(cacheFolder)
-            .Select(Path.GetFileName)
-            .Where(x => int.TryParse(x, out _))
-            .Select(name => int.Parse(name!))
-            .OrderBy(x => x)
-            .ToList();
-
-        var owned = new
+        string ownedGamesPath = Path.Combine(cacheFolder, "owned_games.json");
+        OwnedGamesCachePayload existing = await LoadOwnedGamesCacheAsync(ownedGamesPath);
+        OwnedGamesCachePayload owned = new()
         {
-            AppIds = ids
+            Version = OwnedGamesCacheVersion
         };
 
-        await File.WriteAllTextAsync(
-            Path.Combine(cacheFolder, "owned_games.json"),
-            JsonSerializer.Serialize(owned));
+        foreach (string directory in Directory.EnumerateDirectories(cacheFolder)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!int.TryParse(Path.GetFileName(directory), out int appId))
+                continue;
+
+            SteamMeta? meta = await TryReadMetaAsync(directory);
+            string name = meta?.Name ?? "";
+            if (string.IsNullOrWhiteSpace(name) &&
+                existing.Names.TryGetValue(appId, out string? existingName))
+            {
+                name = existingName;
+            }
+
+            int playtime = meta?.PlayTimeMinutes ?? 0;
+            if (existing.Playtime.TryGetValue(appId, out int existingPlaytime))
+                playtime = Math.Max(playtime, existingPlaytime);
+
+            owned.AppIds.Add(appId);
+            owned.Names[appId] = name;
+            owned.Playtime[appId] = playtime;
+        }
+
+        owned.AppIds.Sort();
+
+        await File.WriteAllTextAsync(ownedGamesPath, JsonSerializer.Serialize(owned));
+    }
+
+    private static async Task<OwnedGamesCachePayload> LoadOwnedGamesCacheAsync(string path)
+    {
+        if (!File.Exists(path))
+            return new OwnedGamesCachePayload();
+
+        try
+        {
+            OwnedGamesCachePayload payload =
+                JsonSerializer.Deserialize<OwnedGamesCachePayload>(
+                    await File.ReadAllTextAsync(path))
+                ?? new OwnedGamesCachePayload();
+
+            payload.AppIds ??= new List<int>();
+            payload.Names ??= new Dictionary<int, string>();
+            payload.Playtime ??= new Dictionary<int, int>();
+            return payload;
+        }
+        catch
+        {
+            return new OwnedGamesCachePayload();
+        }
     }
 
     public async Task ScrapeGamesAsync(IEnumerable<int> appIds, string targetFolder)

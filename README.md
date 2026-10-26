@@ -9,6 +9,7 @@ It reads your Steam library from Steam's Dynamic Store userdata page, creates BO
 - Imports the games owned by the currently signed-in Steam account
 - Optionally includes playable games shared through Steam Families
 - Generates BOXROOM's `owned_games.json`
+- Writes BOXROOM's version 2 owned-games cache, including names and playtime, so current BOXROOM builds do not replace imported games during legacy-cache migration
 - Downloads Steam Store metadata
 - Downloads library cover art when available
 - Optionally downloads up to three screenshots per game
